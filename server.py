@@ -20,18 +20,23 @@ app.add_middleware(
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TOOLS_FILE = os.path.join(BASE_DIR, "shopfloor_tool_contract.json")
 
-if not os.path.exists(TOOLS_FILE):
-    raise FileNotFoundError(f"{TOOLS_FILE} not found!")
+TOOL_CONTRACT = {}
+OPERATIONS = {}
 
-with open(TOOLS_FILE, "r", encoding="utf-8") as f:
-    TOOL_CONTRACT = json.load(f)
-
-OPERATIONS = TOOL_CONTRACT.get("operations", {})
+if os.path.exists(TOOLS_FILE):
+    try:
+        with open(TOOLS_FILE, "r", encoding="utf-8") as f:
+            TOOL_CONTRACT = json.load(f)
+        OPERATIONS = TOOL_CONTRACT.get("operations", {})
+    except Exception as e:
+        print(f"[WARN] Could not load tool contract: {e}")
+else:
+    print(f"[WARN] {TOOLS_FILE} not found — using empty operations list.")
 
 
 @app.get("/")
 def root():
-    return {"message": "Shopfloor MCP Server running 🚀"}
+    return {"message": "Shopfloor MCP Server running 🚀", "operations_count": len(OPERATIONS)}
 
 
 @app.get("/tools/list_operations")
@@ -106,9 +111,9 @@ def run_tool(request: ToolRequest):
     }
 
 
+# ✅ Render requires listening on dynamic PORT from environment
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
-    print(f"[START] Shopfloor MCP Server running at http://0.0.0.0:{port}")
-    uvicorn.run(app, host="0.0.0.0", port=port)
-
+    print(f"[START] Shopfloor MCP Server running on 0.0.0.0:{port}")
+    uvicorn.run("server:app", host="0.0.0.0", port=port)
