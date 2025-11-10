@@ -23,7 +23,7 @@ TOOLS_FILE = os.path.join(BASE_DIR, "shopfloor_tool_contract.json")
 if not os.path.exists(TOOLS_FILE):
     raise FileNotFoundError(f"{TOOLS_FILE} not found!")
 
-with open(TOOLS_FILE, "r") as f:
+with open(TOOLS_FILE, "r", encoding="utf-8") as f:
     TOOL_CONTRACT = json.load(f)
 
 OPERATIONS = TOOL_CONTRACT.get("operations", {})
@@ -50,7 +50,7 @@ def cast_input_value(value: Any, type_name: str):
         if type_name == "number":
             if isinstance(value, (int, float)):
                 return value
-            if "." in str(value):
+            if isinstance(value, str) and "." in value:
                 return float(value)
             return int(value)
         elif type_name == "string":
@@ -108,6 +108,6 @@ def run_tool(request: ToolRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))  # Use cloud-assigned port if available
+    port = int(os.environ.get("PORT", 8000))
     print(f"[START] Shopfloor MCP Server running at http://0.0.0.0:{port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
