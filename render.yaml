@@ -1,7 +1,21 @@
 services:
   - type: web
-    name: wfc-render-mcp-server
+    name: mcp-server
     env: python
-    pythonVersion: 3.11.0
-    buildCommand: pip install -r requirements.txt
+    runtime: python
+    region: singapore          # optional, pick nearest region
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
     startCommand: python server.py
+    plan: free                 # or starter/standard depending on your needs
+
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.4
+      - key: OPENAI_API_KEY
+        sync: false             # set securely in Render Dashboard
+      - key: TOOL_CONTRACT_URL
+        value: https://raw.githubusercontent.com/JM-276/WFC_AI_Integration/main/shopfloor_tool_contract.json
+      - key: DATA_BASE_URL
+        value: https://raw.githubusercontent.com/JM-276/WFC_AI_Integration/main/data/
