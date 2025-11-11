@@ -10,7 +10,7 @@ from mcp.server.fastmcp import FastMCP
 from contextlib import asynccontextmanager
 
 # ─────────────────────────────────────────────
-# Configurable URLs and Directories
+# Config
 # ─────────────────────────────────────────────
 TOOL_DIR = "tools"
 TOOL_FILE = os.path.join(TOOL_DIR, "shopfloor_tool_contract.json")
@@ -37,11 +37,6 @@ app.add_middleware(
 mcp = FastMCP("research")
 
 # ─────────────────────────────────────────────
-# Track registered tools safely
-# ─────────────────────────────────────────────
-REGISTERED_TOOLS: List[str] = []
-
-# ─────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────
 def sync_tool_contract() -> str:
@@ -54,7 +49,6 @@ def sync_tool_contract() -> str:
         return f"[SYNC] Tool contract synced from GitHub ({len(response.text)} bytes)"
     except Exception as e:
         return f"[SYNC ERROR] Could not fetch tool contract: {e}"
-
 
 def fetch_csv(file_name: str) -> List[dict]:
     url = DATA_BASE_URL + file_name
@@ -70,23 +64,16 @@ def fetch_csv(file_name: str) -> List[dict]:
 # ─────────────────────────────────────────────
 # MCP Tools
 # ─────────────────────────────────────────────
-def register_tool(name: str):
-    """Helper to track registered tools safely."""
-    if name not in REGISTERED_TOOLS:
-        REGISTERED_TOOLS.append(name)
-
-@mcp.tool(name="list_operations")
+@mcp.tool()
 def list_operations() -> List[str]:
-    register_tool("list_operations")
     if not os.path.exists(TOOL_FILE):
         return ["Tool contract not found."]
     with open(TOOL_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
     return list(data.get("operations", {}).keys())
 
-@mcp.tool(name="extract_info")
+@mcp.tool()
 def extract_info(operation_id: str) -> str:
-    register_tool("extract_info")
     if not os.path.exists(TOOL_FILE):
         return "Tool contract missing."
     with open(TOOL_FILE, "r", encoding="utf-8") as f:
@@ -94,9 +81,8 @@ def extract_info(operation_id: str) -> str:
     ops = data.get("operations", {})
     return json.dumps(ops.get(operation_id, f"No data for {operation_id}"), indent=2)
 
-@mcp.tool(name="simulate_operation")
+@mcp.tool()
 def simulate_operation(operation_id: str) -> str:
-    register_tool("simulate_operation")
     if not os.path.exists(TOOL_FILE):
         return "Tool contract not found."
     with open(TOOL_FILE, "r", encoding="utf-8") as f:
@@ -114,31 +100,56 @@ def simulate_operation(operation_id: str) -> str:
     }
     return json.dumps(result, indent=2)
 
-@mcp.tool(name="list_facility_zones")
+@mcp.tool()
 def list_facility_zones() -> List[dict]:
-    register_tool("list_facility_zones")
     return fetch_csv("nodes_facilityzones.csv")
 
 # ─────────────────────────────────────────────
-# Lifespan (startup/shutdown)
+# Generate OpenAI-compatible function schema
+# ─────────────────────────────────────────────
+OPENAI_FUNCTIONS = [
+    {
+        "name": "list_operations",
+        "description": "List all operation IDs from the tool contract",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "extract_info",
+        "description": "Extract details of a given operation",
+        "parameters": {"type": "object", "properties": {"operation_id": {"type": "string"}}},
+    },
+    {
+        "name": "simulate_operation",
+        "description": "Simulate an operation with mock input/output",
+        "parameters": {"type": "object", "properties": {"operation_id": {"type": "string"}}},
+    },
+    {
+        "name": "list_facility_zones",
+        "description": "List all facility zones from GitHub CSV",
+        "parameters": {"type": "object", "properties": {}},
+    }
+]
+
+@app.get("/openai_functions")
+def get_openai_functions():
+    return OPENAI_FUNCTIONS
+
+# ─────────────────────────────────────────────
+# Lifespan
 # ─────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print(sync_tool_contract())
     print("[READY] MCP server initialized.")
-    print(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")
     yield
     print("[SHUTDOWN] MCP server stopped.")
 
 app.router.lifespan_context = lifespan
 
 # ─────────────────────────────────────────────
-# Main entry (Render-only)
+# Main
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
     print(sync_tool_contract())
-    print(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")
-
-    # On Render, start via FastAPI + MCP SSE
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
