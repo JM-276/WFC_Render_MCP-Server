@@ -8,4 +8,18 @@ pydantic==1.10.10
 mcp>=0.1.1
 
 # OpenAI client (for GPT calls if needed later)
+openai>=1.0.0# Core web framework
+fastapi==0.111.0
+starlette==0.37.2      # ✅ required by FastAPI 0.111.0
+uvicorn==0.23.2
+
+# Data and environment handling
+pydantic==1.10.15       # ✅ matches FastAPI 0.111.0 (v2 is incompatible)
+python-dotenv==1.0.0
+requests==2.31.0
+
+# MCP + AI integrations
+mcp>=0.1.1
 openai>=1.0.0
+
+
