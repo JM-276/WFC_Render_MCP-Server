@@ -136,10 +136,11 @@ if __name__ == "__main__":
     print(sync_tool_contract())
 
     # This print confirms tool registration before running
-    print(f"[TOOLS REGISTERED] {list(mcp.tools.keys())}")
+    print(f"[TOOLS REGISTERED] {list(mcp.tool.keys())}")
 
     if os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"):
         import uvicorn
         uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
     else:
         mcp.run()
+
