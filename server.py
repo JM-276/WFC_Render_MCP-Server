@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from mcp.server.fastmcp import FastMCP
 from contextlib import asynccontextmanager
+import threading
 
 # ─────────────────────────────────────────────
 # Configurable URLs and Directories
@@ -24,7 +25,7 @@ DATA_BASE_URL = os.getenv(
 )
 
 # ─────────────────────────────────────────────
-# FastAPI app (optional, mainly for Render health check)
+# FastAPI + MCP
 # ─────────────────────────────────────────────
 app = FastAPI(title="Shopfloor MCP Server")
 app.add_middleware(
@@ -35,6 +36,8 @@ app.add_middleware(
 )
 
 mcp = FastMCP("research")
+
+# Keep track of registered tools
 REGISTERED_TOOLS = []
 
 # ─────────────────────────────────────────────
@@ -50,7 +53,6 @@ def sync_tool_contract() -> str:
         return f"[SYNC] Tool contract synced from GitHub ({len(response.text)} bytes)"
     except Exception as e:
         return f"[SYNC ERROR] Could not fetch tool contract: {e}"
-
 
 def fetch_csv(file_name: str) -> List[dict]:
     url = DATA_BASE_URL + file_name
@@ -111,7 +113,7 @@ def list_facility_zones() -> List[dict]:
     return fetch_csv("nodes_facilityzones.csv")
 
 # ─────────────────────────────────────────────
-# Lifespan for FastAPI
+# Lifespan
 # ─────────────────────────────────────────────
 from contextlib import asynccontextmanager
 
@@ -126,11 +128,15 @@ async def lifespan(app: FastAPI):
 app.router.lifespan_context = lifespan
 
 # ─────────────────────────────────────────────
-# Main entry (Render deployment)
+# Main entry (Render-safe)
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
     print(sync_tool_contract())
     print(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")
 
-    # Render will use FastAPI, but MCP runs independently
-    mcp.run()
+    # Run MCP in a background thread
+    threading.Thread(target=mcp.run, daemon=True).start()
+
+    # Start FastAPI for Render
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
