@@ -134,4 +134,5 @@ async def startup_event():
 if __name__ == "__main__":
     import uvicorn
     print(sync_tool_contract())
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+     mcp.run()  # Start the MCP JSON-RPC server
+
