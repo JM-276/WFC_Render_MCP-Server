@@ -7,6 +7,7 @@ from typing import List
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from mcp.server.fastmcp import FastMCP
+from contextlib import asynccontextmanager
 
 # ─────────────────────────────────────────────
 # Configurable URLs and Directories
@@ -23,10 +24,9 @@ DATA_BASE_URL = os.getenv(
 )
 
 # ─────────────────────────────────────────────
-# FastAPI app for Render deployment
+# FastAPI + MCP
 # ─────────────────────────────────────────────
 app = FastAPI(title="Shopfloor MCP Server")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -34,13 +34,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─────────────────────────────────────────────
-# Initialize MCP server
-# ─────────────────────────────────────────────
 mcp = FastMCP("research")
 
+
 # ─────────────────────────────────────────────
-# GitHub sync helpers
+# Helpers
 # ─────────────────────────────────────────────
 def sync_tool_contract() -> str:
     os.makedirs(TOOL_DIR, exist_ok=True)
@@ -67,7 +65,7 @@ def fetch_csv(file_name: str) -> List[dict]:
 
 
 # ─────────────────────────────────────────────
-# MCP tools
+# Tools
 # ─────────────────────────────────────────────
 @mcp.tool()
 def list_operations() -> List[str]:
@@ -119,10 +117,8 @@ def list_facility_zones() -> List[dict]:
 
 
 # ─────────────────────────────────────────────
-# Lifespan (modern startup hook)
+# Lifespan
 # ─────────────────────────────────────────────
-from contextlib import asynccontextmanager
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print(sync_tool_contract())
@@ -134,15 +130,16 @@ app.router.lifespan_context = lifespan
 
 
 # ─────────────────────────────────────────────
-# Run mode: Local MCP vs Render HTTP
+# Main entry
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
     print(sync_tool_contract())
 
+    # This print confirms tool registration before running
+    print(f"[TOOLS REGISTERED] {list(mcp.tools.keys())}")
+
     if os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"):
-        # Running on Render
         import uvicorn
         uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
     else:
-        # Running locally (MCP stdio mode)
         mcp.run()
