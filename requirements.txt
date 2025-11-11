@@ -1,13 +1,6 @@
-# Core web framework
-fastapi==0.111.0
-starlette==0.37.2      # ✅ required by FastAPI 0.111.0
-uvicorn==0.23.2
-
-# Data and environment handling
-pydantic==1.10.15       # ✅ matches FastAPI 0.111.0 (v2 is incompatible)
-python-dotenv==1.0.0
-requests==2.31.0
-
-# MCP + AI integrations
-mcp>=0.1.1
-openai>=1.0.0
+fastapi==0.115.0
+uvicorn==0.30.6
+requests==2.32.3
+python-dotenv==1.0.1
+pydantic==2.11.1
+mcp==1.21.0
