@@ -123,7 +123,7 @@ async def lifespan(app: FastAPI):
 app.router.lifespan_context = lifespan
 
 # Mount MCP ASGI for FastAPI
-app.mount("/mcp", mcp.asgi_app())
+# app.mount("/mcp", mcp.asgi_app())
 
 
 # ─────────────────────────────────────────────
@@ -138,3 +138,4 @@ if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
     else:
         mcp.run()
+
