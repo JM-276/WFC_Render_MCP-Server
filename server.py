@@ -24,7 +24,7 @@ DATA_BASE_URL = os.getenv(
 )
 
 # ─────────────────────────────────────────────
-# FastAPI + MCP
+# FastAPI app (optional, mainly for Render health check)
 # ─────────────────────────────────────────────
 app = FastAPI(title="Shopfloor MCP Server")
 app.add_middleware(
@@ -35,10 +35,6 @@ app.add_middleware(
 )
 
 mcp = FastMCP("research")
-
-# ─────────────────────────────────────────────
-# Tool registry
-# ─────────────────────────────────────────────
 REGISTERED_TOOLS = []
 
 # ─────────────────────────────────────────────
@@ -68,7 +64,7 @@ def fetch_csv(file_name: str) -> List[dict]:
         return []
 
 # ─────────────────────────────────────────────
-# Tools
+# MCP Tools
 # ─────────────────────────────────────────────
 @mcp.tool()
 def list_operations() -> List[str]:
@@ -79,7 +75,6 @@ def list_operations() -> List[str]:
         data = json.load(f)
     return list(data.get("operations", {}).keys())
 
-
 @mcp.tool()
 def extract_info(operation_id: str) -> str:
     REGISTERED_TOOLS.append("extract_info")
@@ -89,7 +84,6 @@ def extract_info(operation_id: str) -> str:
         data = json.load(f)
     ops = data.get("operations", {})
     return json.dumps(ops.get(operation_id, f"No data for {operation_id}"), indent=2)
-
 
 @mcp.tool()
 def simulate_operation(operation_id: str) -> str:
@@ -111,35 +105,32 @@ def simulate_operation(operation_id: str) -> str:
     }
     return json.dumps(result, indent=2)
 
-
 @mcp.tool()
 def list_facility_zones() -> List[dict]:
     REGISTERED_TOOLS.append("list_facility_zones")
     return fetch_csv("nodes_facilityzones.csv")
 
+# ─────────────────────────────────────────────
+# Lifespan for FastAPI
+# ─────────────────────────────────────────────
+from contextlib import asynccontextmanager
 
-# ─────────────────────────────────────────────
-# Lifespan
-# ─────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print(sync_tool_contract())
     print("[READY] MCP server initialized.")
-    print(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")  # ✅ prints all tools
+    print(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")
     yield
     print("[SHUTDOWN] MCP server stopped.")
 
 app.router.lifespan_context = lifespan
 
 # ─────────────────────────────────────────────
-# Main entry
+# Main entry (Render deployment)
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
     print(sync_tool_contract())
     print(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")
 
-    if os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"):
-        import uvicorn
-        uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
-    else:
-        mcp.run()
+    # Render will use FastAPI, but MCP runs independently
+    mcp.run()
