@@ -1,5 +1,11 @@
-fastapi>=0.109.0
-uvicorn>=0.23.0
-pydantic>=2.1.1
-python-dotenv==1.0.0
+fastapi==0.111.0
+uvicorn==0.23.0
 requests==2.31.0
+python-dotenv==1.0.0
+pydantic==1.10.10
+
+# MCP framework (for FastMCP server integration)
+mcp>=0.1.1
+
+# OpenAI client (for GPT calls if needed later)
+openai>=1.0.0
