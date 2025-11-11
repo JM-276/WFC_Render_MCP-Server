@@ -1,14 +1,32 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import json
 import os
-from typing import Any, Dict
-import random
+import json
+import requests
+import csv
+from io import StringIO
+from typing import List
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from mcp.server.fastmcp import FastMCP
 
+# ─────────────────────────────────────────────
+# Configurable URLs and Directories
+# ─────────────────────────────────────────────
+TOOL_DIR = "tools"
+TOOL_FILE = os.path.join(TOOL_DIR, "shopfloor_tool_contract.json")
+RAW_JSON_URL = os.getenv(
+    "TOOL_CONTRACT_URL",
+    "https://raw.githubusercontent.com/JM-276/WFC_AI_Integration/main/shopfloor_tool_contract.json"
+)
+DATA_BASE_URL = os.getenv(
+    "DATA_BASE_URL",
+    "https://raw.githubusercontent.com/JM-276/WFC_AI_Integration/main/data/"
+)
+
+# ─────────────────────────────────────────────
+# FastAPI app for Render deployment
+# ─────────────────────────────────────────────
 app = FastAPI(title="Shopfloor MCP Server")
 
-# Allow cross-origin requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,104 +34,104 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load tool contract (safe relative path)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TOOLS_FILE = os.path.join(BASE_DIR, "shopfloor_tool_contract.json")
+# ─────────────────────────────────────────────
+# Initialize MCP server
+# ─────────────────────────────────────────────
+mcp = FastMCP("research")
 
-TOOL_CONTRACT = {}
-OPERATIONS = {}
 
-if os.path.exists(TOOLS_FILE):
+# ─────────────────────────────────────────────
+# GitHub sync helpers
+# ─────────────────────────────────────────────
+def sync_tool_contract() -> str:
+    os.makedirs(TOOL_DIR, exist_ok=True)
     try:
-        with open(TOOLS_FILE, "r", encoding="utf-8") as f:
-            TOOL_CONTRACT = json.load(f)
-        OPERATIONS = TOOL_CONTRACT.get("operations", {})
+        response = requests.get(RAW_JSON_URL)
+        response.raise_for_status()
+        with open(TOOL_FILE, "w", encoding="utf-8") as f:
+            f.write(response.text)
+        return f"[SYNC] Tool contract synced from GitHub ({len(response.text)} bytes)"
     except Exception as e:
-        print(f"[WARN] Could not load tool contract: {e}")
-else:
-    print(f"[WARN] {TOOLS_FILE} not found — using empty operations list.")
+        return f"[SYNC ERROR] Could not fetch tool contract: {e}"
 
 
-@app.get("/")
-def root():
-    return {"message": "Shopfloor MCP Server running 🚀", "operations_count": len(OPERATIONS)}
-
-
-@app.get("/tools/list_operations")
-def list_operations():
-    """Return a list of available operation names"""
-    return {"operations": list(OPERATIONS.keys())}
-
-
-class ToolRequest(BaseModel):
-    operation: str
-    inputs: Dict[str, Any] = {}
-
-
-def cast_input_value(value: Any, type_name: str):
+def fetch_csv(file_name: str) -> List[dict]:
+    url = DATA_BASE_URL + file_name
     try:
-        if type_name == "number":
-            if isinstance(value, (int, float)):
-                return value
-            if isinstance(value, str) and "." in value:
-                return float(value)
-            return int(value)
-        elif type_name == "string":
-            return str(value)
-        else:
-            return value
-    except Exception:
-        raise ValueError(f"Cannot cast value '{value}' to type '{type_name}'")
+        response = requests.get(url)
+        response.raise_for_status()
+        reader = csv.DictReader(StringIO(response.text))
+        return [row for row in reader]
+    except Exception as e:
+        print(f"[CSV ERROR] {file_name}: {e}")
+        return []
 
 
-def validate_and_cast_inputs(op_schema: Dict, inputs: Dict[str, Any]) -> Dict[str, Any]:
-    validated = {}
-    for key, val_schema in op_schema.get("inputs", {}).items():
-        if val_schema.get("required", False) and key not in inputs:
-            raise HTTPException(status_code=400, detail=f"Missing required input: '{key}'")
-        if key in inputs:
-            try:
-                validated[key] = cast_input_value(inputs[key], val_schema["type"])
-            except ValueError as e:
-                raise HTTPException(status_code=400, detail=str(e))
-    return validated
+# ─────────────────────────────────────────────
+# MCP tools
+# ─────────────────────────────────────────────
+@mcp.tool()
+def list_operations() -> List[str]:
+    """List all operation IDs from tool contract."""
+    if not os.path.exists(TOOL_FILE):
+        return ["Tool contract not found."]
+    with open(TOOL_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return list(data.get("operations", {}).keys())
 
 
-def generate_mock_output(operation: Dict, inputs: Dict[str, Any]) -> Dict:
-    outputs_schema = operation.get("outputs", [])
-    examples = operation.get("examples", [])
-
-    if examples:
-        example = random.choice(examples)
-        example_inputs = example.get("inputs", {})
-        mock_output = {}
-        for out in outputs_schema:
-            mock_output[out["name"]] = example_inputs.get(out["name"], f"<{out['type']}>")
-        return mock_output
-    else:
-        return {out["name"]: f"<{out['type']}>" for out in outputs_schema}
+@mcp.tool()
+def extract_info(operation_id: str) -> str:
+    """Extract details of a given operation."""
+    if not os.path.exists(TOOL_FILE):
+        return "Tool contract missing."
+    with open(TOOL_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    ops = data.get("operations", {})
+    return json.dumps(ops.get(operation_id, f"No data for {operation_id}"), indent=2)
 
 
-@app.post("/tools/run")
-def run_tool(request: ToolRequest):
-    op = OPERATIONS.get(request.operation)
-    if not op:
-        raise HTTPException(status_code=404, detail=f"Operation '{request.operation}' not found")
+@mcp.tool()
+def simulate_operation(operation_id: str) -> str:
+    """Simulate an operation with mock input/output."""
+    if not os.path.exists(TOOL_FILE):
+        return "Tool contract not found."
+    with open(TOOL_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    ops = data.get("operations", {})
+    if operation_id not in ops:
+        return f"No such operation: {operation_id}"
 
-    validated_inputs = validate_and_cast_inputs(op, request.inputs)
-    mock_outputs = generate_mock_output(op, validated_inputs)
-
-    return {
-        "operation": request.operation,
-        "description": op.get("description"),
-        "inputs_received": validated_inputs,
-        "outputs": mock_outputs
+    op = ops[operation_id]
+    result = {
+        "operation_id": operation_id,
+        "description": op.get("description", ""),
+        "cypher": op.get("cypher", ""),
+        "mock_inputs": {k: f"<{v.get('type', 'unknown')}>" for k, v in op.get("inputs", {}).items()},
+        "mock_outputs": {o["name"]: f"<{o['type']}>" for o in op.get("outputs", [])}
     }
+    return json.dumps(result, indent=2)
 
 
-# ✅ Render requires listening on dynamic PORT from environment
+@mcp.tool()
+def list_facility_zones() -> List[dict]:
+    """Load facility zones from GitHub CSV."""
+    return fetch_csv("nodes_facilityzones.csv")
+
+
+# ─────────────────────────────────────────────
+# Startup Hook
+# ─────────────────────────────────────────────
+@app.on_event("startup")
+async def startup_event():
+    print(sync_tool_contract())
+    print("[READY] MCP server initialized.")
+
+
+# ─────────────────────────────────────────────
+# MCP Transport (Render-safe)
+# ─────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    print(f"[START] Shopfloor MCP Server running on 0.0.0.0:{port}")
-    uvicorn.run("server:app", host="0.0.0.0", port=port)
+    print(sync_tool_contract())
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
