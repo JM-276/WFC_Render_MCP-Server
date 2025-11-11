@@ -4,9 +4,8 @@ import requests
 import csv
 from io import StringIO
 from typing import List
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from mcp.server.fastmcp import FastMCP
 from contextlib import asynccontextmanager
 
@@ -37,7 +36,6 @@ app.add_middleware(
 
 mcp = FastMCP("research")
 
-
 # ─────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────
@@ -64,11 +62,10 @@ def fetch_csv(file_name: str) -> List[dict]:
         print(f"[CSV ERROR] {file_name}: {e}")
         return []
 
-
 # ─────────────────────────────────────────────
-# MCP Tools
+# MCP Tools (no namespace)
 # ─────────────────────────────────────────────
-@mcp.tool()
+@mcp.tool(name="list_operations")
 def list_operations() -> List[str]:
     if not os.path.exists(TOOL_FILE):
         return ["Tool contract not found."]
@@ -77,7 +74,7 @@ def list_operations() -> List[str]:
     return list(data.get("operations", {}).keys())
 
 
-@mcp.tool()
+@mcp.tool(name="extract_info")
 def extract_info(operation_id: str) -> str:
     if not os.path.exists(TOOL_FILE):
         return "Tool contract missing."
@@ -87,7 +84,7 @@ def extract_info(operation_id: str) -> str:
     return json.dumps(ops.get(operation_id, f"No data for {operation_id}"), indent=2)
 
 
-@mcp.tool()
+@mcp.tool(name="simulate_operation")
 def simulate_operation(operation_id: str) -> str:
     if not os.path.exists(TOOL_FILE):
         return "Tool contract not found."
@@ -107,59 +104,33 @@ def simulate_operation(operation_id: str) -> str:
     return json.dumps(result, indent=2)
 
 
-@mcp.tool()
+@mcp.tool(name="list_facility_zones")
 def list_facility_zones() -> List[dict]:
     return fetch_csv("nodes_facilityzones.csv")
 
 
 # ─────────────────────────────────────────────
-# Lifespan for startup
+# Lifespan (Render startup)
 # ─────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print(sync_tool_contract())
     print("[READY] MCP server initialized.")
+    # print registered tools
+    print(f"[TOOLS REGISTERED] {list(mcp._tools.keys())}")
     yield
     print("[SHUTDOWN] MCP server stopped.")
 
-
 app.router.lifespan_context = lifespan
 
+# Mount MCP JSON-RPC ASGI on /mcp
+app.mount("/mcp", mcp.sse_app())  # using SSE transport for Render
 
 # ─────────────────────────────────────────────
-# HTTP JSON-RPC Adapter for MCP Tools
-# ─────────────────────────────────────────────
-@app.post("/mcp_call")
-async def mcp_call(req: Request):
-    """Call any registered MCP tool via POST request.
-
-    Request JSON:
-    {
-        "tool": "list_facility_zones",
-        "args": {}
-    }
-    """
-    data = await req.json()
-    tool_name = data.get("tool")
-    args = data.get("args", {})
-
-    if not hasattr(mcp, tool_name):
-        return JSONResponse({"error": f"No such tool: {tool_name}"}, status_code=400)
-
-    func = getattr(mcp, tool_name)
-    try:
-        result = func(**args)
-        return JSONResponse({"result": result})
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-# ─────────────────────────────────────────────
-# Main entry
+# Main entry (Render only)
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
     print(sync_tool_contract())
-    print("[STARTING] MCP FastAPI server...")
-
+    print(f"[TOOLS REGISTERED] {list(mcp._tools.keys())}")
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
