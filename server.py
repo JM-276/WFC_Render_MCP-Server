@@ -36,6 +36,8 @@ app.add_middleware(
 
 mcp = FastMCP("research")
 
+# Keep track of registered tools
+REGISTERED_TOOLS = []
 
 # ─────────────────────────────────────────────
 # Helpers
@@ -69,7 +71,7 @@ def fetch_csv(file_name: str) -> List[dict]:
 # ─────────────────────────────────────────────
 @mcp.tool()
 def list_operations() -> List[str]:
-    """List all operation IDs from tool contract."""
+    REGISTERED_TOOLS.append("list_operations")
     if not os.path.exists(TOOL_FILE):
         return ["Tool contract not found."]
     with open(TOOL_FILE, "r", encoding="utf-8") as f:
@@ -79,7 +81,7 @@ def list_operations() -> List[str]:
 
 @mcp.tool()
 def extract_info(operation_id: str) -> str:
-    """Extract details of a given operation."""
+    REGISTERED_TOOLS.append("extract_info")
     if not os.path.exists(TOOL_FILE):
         return "Tool contract missing."
     with open(TOOL_FILE, "r", encoding="utf-8") as f:
@@ -90,7 +92,7 @@ def extract_info(operation_id: str) -> str:
 
 @mcp.tool()
 def simulate_operation(operation_id: str) -> str:
-    """Simulate an operation with mock input/output."""
+    REGISTERED_TOOLS.append("simulate_operation")
     if not os.path.exists(TOOL_FILE):
         return "Tool contract not found."
     with open(TOOL_FILE, "r", encoding="utf-8") as f:
@@ -98,7 +100,6 @@ def simulate_operation(operation_id: str) -> str:
     ops = data.get("operations", {})
     if operation_id not in ops:
         return f"No such operation: {operation_id}"
-
     op = ops[operation_id]
     result = {
         "operation_id": operation_id,
@@ -112,7 +113,7 @@ def simulate_operation(operation_id: str) -> str:
 
 @mcp.tool()
 def list_facility_zones() -> List[dict]:
-    """Load facility zones from GitHub CSV."""
+    REGISTERED_TOOLS.append("list_facility_zones")
     return fetch_csv("nodes_facilityzones.csv")
 
 
@@ -123,6 +124,7 @@ def list_facility_zones() -> List[dict]:
 async def lifespan(app: FastAPI):
     print(sync_tool_contract())
     print("[READY] MCP server initialized.")
+    print(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")
     yield
     print("[SHUTDOWN] MCP server stopped.")
 
@@ -134,14 +136,10 @@ app.router.lifespan_context = lifespan
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
     print(sync_tool_contract())
-
-    # This print confirms tool registration before running
-    print(f"[TOOLS REGISTERED] {list(mcp.tools.keys())}")
+    print(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")
 
     if os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"):
         import uvicorn
         uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
     else:
         mcp.run()
-
-
