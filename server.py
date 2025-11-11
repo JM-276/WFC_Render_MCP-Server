@@ -37,6 +37,11 @@ app.add_middleware(
 mcp = FastMCP("research")
 
 # ─────────────────────────────────────────────
+# Track registered tools safely
+# ─────────────────────────────────────────────
+REGISTERED_TOOLS: List[str] = []
+
+# ─────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────
 def sync_tool_contract() -> str:
@@ -63,19 +68,25 @@ def fetch_csv(file_name: str) -> List[dict]:
         return []
 
 # ─────────────────────────────────────────────
-# MCP Tools (no namespace)
+# MCP Tools
 # ─────────────────────────────────────────────
+def register_tool(name: str):
+    """Helper to track registered tools safely."""
+    if name not in REGISTERED_TOOLS:
+        REGISTERED_TOOLS.append(name)
+
 @mcp.tool(name="list_operations")
 def list_operations() -> List[str]:
+    register_tool("list_operations")
     if not os.path.exists(TOOL_FILE):
         return ["Tool contract not found."]
     with open(TOOL_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
     return list(data.get("operations", {}).keys())
 
-
 @mcp.tool(name="extract_info")
 def extract_info(operation_id: str) -> str:
+    register_tool("extract_info")
     if not os.path.exists(TOOL_FILE):
         return "Tool contract missing."
     with open(TOOL_FILE, "r", encoding="utf-8") as f:
@@ -83,9 +94,9 @@ def extract_info(operation_id: str) -> str:
     ops = data.get("operations", {})
     return json.dumps(ops.get(operation_id, f"No data for {operation_id}"), indent=2)
 
-
 @mcp.tool(name="simulate_operation")
 def simulate_operation(operation_id: str) -> str:
+    register_tool("simulate_operation")
     if not os.path.exists(TOOL_FILE):
         return "Tool contract not found."
     with open(TOOL_FILE, "r", encoding="utf-8") as f:
@@ -103,34 +114,31 @@ def simulate_operation(operation_id: str) -> str:
     }
     return json.dumps(result, indent=2)
 
-
 @mcp.tool(name="list_facility_zones")
 def list_facility_zones() -> List[dict]:
+    register_tool("list_facility_zones")
     return fetch_csv("nodes_facilityzones.csv")
 
-
 # ─────────────────────────────────────────────
-# Lifespan (Render startup)
+# Lifespan (startup/shutdown)
 # ─────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print(sync_tool_contract())
     print("[READY] MCP server initialized.")
-    # print registered tools
-    print(f"[TOOLS REGISTERED] {list(mcp._tools.keys())}")
+    print(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")
     yield
     print("[SHUTDOWN] MCP server stopped.")
 
 app.router.lifespan_context = lifespan
 
-# Mount MCP JSON-RPC ASGI on /mcp
-app.mount("/mcp", mcp.sse_app())  # using SSE transport for Render
-
 # ─────────────────────────────────────────────
-# Main entry (Render only)
+# Main entry (Render-only)
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
     print(sync_tool_contract())
-    print(f"[TOOLS REGISTERED] {list(mcp._tools.keys())}")
+    print(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")
+
+    # On Render, start via FastAPI + MCP SSE
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
