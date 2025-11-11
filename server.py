@@ -9,6 +9,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from mcp.server.fastmcp import FastMCP
 from contextlib import asynccontextmanager
 import threading
+import logging
+
+# ─────────────────────────────────────────────
+# Logging
+# ─────────────────────────────────────────────
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
 # Configurable URLs and Directories
@@ -36,8 +43,6 @@ app.add_middleware(
 )
 
 mcp = FastMCP("research")
-
-# Keep track of registered tools
 REGISTERED_TOOLS = []
 
 # ─────────────────────────────────────────────
@@ -62,7 +67,7 @@ def fetch_csv(file_name: str) -> List[dict]:
         reader = csv.DictReader(StringIO(response.text))
         return [row for row in reader]
     except Exception as e:
-        print(f"[CSV ERROR] {file_name}: {e}")
+        logger.error(f"[CSV ERROR] {file_name}: {e}")
         return []
 
 # ─────────────────────────────────────────────
@@ -115,28 +120,26 @@ def list_facility_zones() -> List[dict]:
 # ─────────────────────────────────────────────
 # Lifespan
 # ─────────────────────────────────────────────
-from contextlib import asynccontextmanager
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print(sync_tool_contract())
-    print("[READY] MCP server initialized.")
-    print(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")
+    logger.info(sync_tool_contract())
+    logger.info("[READY] MCP server initialized.")
+    logger.info(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")
     yield
-    print("[SHUTDOWN] MCP server stopped.")
+    logger.info("[SHUTDOWN] MCP server stopped.")
 
 app.router.lifespan_context = lifespan
 
 # ─────────────────────────────────────────────
-# Main entry (Render-safe)
+# Main entry
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
-    print(sync_tool_contract())
-    print(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")
+    logger.info(sync_tool_contract())
+    logger.info(f"[TOOLS REGISTERED] {REGISTERED_TOOLS}")
 
-    # Run MCP in a background thread
+    # Start MCP server in a background thread (daemon)
     threading.Thread(target=mcp.run, daemon=True).start()
 
-    # Start FastAPI for Render
+    # Start FastAPI HTTP server for Render
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
