@@ -39,7 +39,6 @@ app.add_middleware(
 # ─────────────────────────────────────────────
 mcp = FastMCP("research")
 
-
 # ─────────────────────────────────────────────
 # GitHub sync helpers
 # ─────────────────────────────────────────────
@@ -120,20 +119,30 @@ def list_facility_zones() -> List[dict]:
 
 
 # ─────────────────────────────────────────────
-# Startup Hook
+# Lifespan (modern startup hook)
 # ─────────────────────────────────────────────
-@app.on_event("startup")
-async def startup_event():
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     print(sync_tool_contract())
     print("[READY] MCP server initialized.")
+    yield
+    print("[SHUTDOWN] MCP server stopped.")
+
+app.router.lifespan_context = lifespan
 
 
 # ─────────────────────────────────────────────
-# MCP Transport (Render-safe)
+# Run mode: Local MCP vs Render HTTP
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
-    import uvicorn
     print(sync_tool_contract())
-    mcp.run()  # Start the MCP JSON-RPC server
 
-
+    if os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"):
+        # Running on Render
+        import uvicorn
+        uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+    else:
+        # Running locally (MCP stdio mode)
+        mcp.run()
