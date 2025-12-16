@@ -1,7 +1,7 @@
 {
-  "toolName": "ShopfloorGraphTool",
+  "toolName": "WaterPlantGraphTool",
   "version": "0.1.0",
-  "description": "Query factory shopfloor graph for machines, sensors, operators, work orders, and maintenance logs.",
+  "description": "Query water treatment plant graph for pumps, tanks, pipelines, sensors, operators, and maintenance records.",
   "timeouts": {
     "defaultMs": 15000
   },
@@ -9,23 +9,28 @@
     "type": "none"
   },
   "operations": {
-    "highVibrationMachines": {
-      "description": "List machines whose linked sensors exceed a reading threshold.",
+    "abnormalWaterQuality": {
+      "description": "List assets whose linked water quality sensors exceed a threshold.",
       "inputs": {
         "threshold": {
           "type": "number",
           "required": true
         },
+        "parameter": {
+          "type": "string",
+          "required": true,
+          "example": "turbidity"
+        },
         "unit": {
           "type": "string",
           "required": true,
-          "example": "mm/s"
+          "example": "NTU"
         }
       },
-      "cypher": "MATCH (m:Machine)-[:MONITORED_BY]->(s:Sensor) WHERE s.reading > $threshold AND s.unit = $unit RETURN m.id AS machineId, s.id AS sensorId, s.reading AS reading, s.timestamp AS at ORDER BY reading DESC",
+      "cypher": "MATCH (a:Asset)-[:MONITORED_BY]->(s:WaterSensor) WHERE s.parameter = $parameter AND s.reading > $threshold AND s.unit = $unit RETURN a.id AS assetId, s.id AS sensorId, s.reading AS reading, s.timestamp AS at ORDER BY reading DESC",
       "outputs": [
         {
-          "name": "machineId",
+          "name": "assetId",
           "type": "string"
         },
         {
@@ -44,23 +49,25 @@
       "examples": [
         {
           "inputs": {
-            "threshold": 7.5,
-            "unit": "mm/s"
+            "threshold": 5.0,
+            "parameter": "turbidity",
+            "unit": "NTU"
           }
         }
       ]
     },
-    "overdueWorkOrders": {
-      "description": "Find machines that have overdue work orders.",
+
+    "overdueMaintenanceTasks": {
+      "description": "Find water plant assets that have overdue maintenance tasks.",
       "inputs": {},
-      "cypher": "MATCH (m:Machine)-[:HAS_WORK_ORDER]->(w:WorkOrder) WHERE w.status = 'Overdue' RETURN m.id AS machineId, w.id AS workOrderId, w.scheduledTime AS due ORDER BY due ASC",
+      "cypher": "MATCH (a:Asset)-[:HAS_MAINTENANCE_TASK]->(m:MaintenanceTask) WHERE m.status = 'Overdue' RETURN a.id AS assetId, m.id AS taskId, m.scheduledTime AS due ORDER BY due ASC",
       "outputs": [
         {
-          "name": "machineId",
+          "name": "assetId",
           "type": "string"
         },
         {
-          "name": "workOrderId",
+          "name": "taskId",
           "type": "string"
         },
         {
@@ -74,18 +81,19 @@
         }
       ]
     },
+
     "currentOperator": {
-      "description": "Get the current operator for a machine.",
+      "description": "Get the current operator responsible for a water plant asset.",
       "inputs": {
-        "machineId": {
+        "assetId": {
           "type": "string",
           "required": true
         }
       },
-      "cypher": "MATCH (m:Machine {id: $machineId})- [r:OPERATED_BY]->(o:Operator) RETURN m.id AS machineId, o.id AS operatorId, o.name AS operatorName, r.shift AS shift",
+      "cypher": "MATCH (a:Asset {id: $assetId})-[r:OPERATED_BY]->(o:Operator) RETURN a.id AS assetId, o.id AS operatorId, o.name AS operatorName, r.shift AS shift",
       "outputs": [
         {
-          "name": "machineId",
+          "name": "assetId",
           "type": "string"
         },
         {
@@ -104,27 +112,28 @@
       "examples": [
         {
           "inputs": {
-            "machineId": "M100"
+            "assetId": "PUMP-01"
           }
         }
       ]
     },
+
     "sensorsByZone": {
-      "description": "List sensors attached to machines located in a given zone.",
+      "description": "List water sensors attached to assets located in a given plant zone.",
       "inputs": {
         "zoneId": {
           "type": "string",
           "required": true
         }
       },
-      "cypher": "MATCH (z:FacilityZone {id: $zoneId})<-[:LOCATED_IN]-(m:Machine)-[:MONITORED_BY]->(s:Sensor) RETURN z.id AS zoneId, m.id AS machineId, s.id AS sensorId, s.type AS sensorType, s.reading AS reading, s.unit AS unit",
+      "cypher": "MATCH (z:PlantZone {id: $zoneId})<-[:LOCATED_IN]-(a:Asset)-[:MONITORED_BY]->(s:WaterSensor) RETURN z.id AS zoneId, a.id AS assetId, s.id AS sensorId, s.parameter AS parameter, s.reading AS reading, s.unit AS unit",
       "outputs": [
         {
           "name": "zoneId",
           "type": "string"
         },
         {
-          "name": "machineId",
+          "name": "assetId",
           "type": "string"
         },
         {
@@ -132,7 +141,7 @@
           "type": "string"
         },
         {
-          "name": "sensorType",
+          "name": "parameter",
           "type": "string"
         },
         {
@@ -147,13 +156,14 @@
       "examples": [
         {
           "inputs": {
-            "zoneId": "Z1"
+            "zoneId": "ZONE-A"
           }
         }
       ]
     },
-    "dueForMaintenance": {
-      "description": "Machines whose last maintenance is older than a cutoff datetime.",
+
+    "dueForInspection": {
+      "description": "Assets whose last inspection is older than a cutoff datetime.",
       "inputs": {
         "cutoff": {
           "type": "string",
@@ -161,14 +171,14 @@
           "example": "2025-10-01T00:00:00Z"
         }
       },
-      "cypher": "MATCH (m:Machine) WHERE m.lastMaintenance < datetime($cutoff) RETURN m.id AS machineId, m.lastMaintenance AS lastMaintenance ORDER BY lastMaintenance ASC",
+      "cypher": "MATCH (a:Asset) WHERE a.lastInspection < datetime($cutoff) RETURN a.id AS assetId, a.lastInspection AS lastInspection ORDER BY lastInspection ASC",
       "outputs": [
         {
-          "name": "machineId",
+          "name": "assetId",
           "type": "string"
         },
         {
-          "name": "lastMaintenance",
+          "name": "lastInspection",
           "type": "string"
         }
       ],
